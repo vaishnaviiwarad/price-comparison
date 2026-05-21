@@ -49,7 +49,7 @@ const LoginPage = () => {
             MERN Price Tracker
           </span>
           <h1 className="mt-6 max-w-xl font-['Sora'] text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
-            Compare real Amazon and Flipkart prices before you buy.
+            Compare real Amazon, Flipkart, and Croma prices before you buy.
           </h1>
           <p className="mt-5 max-w-2xl text-lg text-ink-700">
             Sign in, paste an Amazon product URL, and get a side-by-side price

@@ -48,7 +48,7 @@ const HistoryList = ({ history, onSelect, loading = false }) => {
             <p className="text-base font-semibold text-ink-900">{item.productTitle}</p>
             <p className="mt-2 text-sm text-ink-700">
               Amazon: {formatPrice(item.amazonPrice)} | Flipkart:{" "}
-              {formatPrice(item.flipkartPrice)}
+              {formatPrice(item.flipkartPrice)} | Croma: {formatPrice(item.cromaPrice)}
             </p>
             <p className="mt-1 text-sm text-brand-600">
               Best price: {item.bestPrice} | Difference: {formatPrice(item.priceDifference)}

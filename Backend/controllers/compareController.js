@@ -1,6 +1,7 @@
 import puppeteer from "puppeteer";
 import SearchHistory from "../models/SearchHistory.js";
 import { scrapeAmazonProduct } from "../scraper/amazonScraper.js";
+import { scrapeCromaProduct } from "../scraper/cromaScraper.js";
 import { logScraperDebug, logScraperError } from "../scraper/debug.js";
 import { scrapeFlipkartProduct } from "../scraper/flipkartScraper.js";
 
@@ -21,6 +22,47 @@ const launchBrowser = async () =>
       height: 900
     },
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+  });
+
+const EXTREME_LOW_RATIO = 0.35;
+const EXTREME_HIGH_RATIO = 3.5;
+
+const sanitizeExtremeStoreOutliers = (stores) =>
+  stores.map((store, index, collection) => {
+    if (typeof store.price !== "number") {
+      return store;
+    }
+
+    const otherPrices = collection
+      .filter((_, candidateIndex) => candidateIndex !== index)
+      .map((candidate) => candidate.price)
+      .filter((price) => typeof price === "number");
+
+    if (!otherPrices.length) {
+      return store;
+    }
+
+    const referencePrice =
+      otherPrices.length === 1
+        ? otherPrices[0]
+        : [...otherPrices].sort((first, second) => first - second)[Math.floor(otherPrices.length / 2)];
+
+    if (store.price < referencePrice * EXTREME_LOW_RATIO || store.price > referencePrice * EXTREME_HIGH_RATIO) {
+      logScraperDebug("compare", "Rejected extreme store price outlier", {
+        store: store.label,
+        price: store.price,
+        referencePrice,
+        ratio: Number((store.price / referencePrice).toFixed(3))
+      });
+
+      return {
+        ...store,
+        price: null,
+        url: ""
+      };
+    }
+
+    return store;
   });
 
 export const comparePrices = async (req, res) => {
@@ -57,39 +99,80 @@ export const comparePrices = async (req, res) => {
       amazonTitle: amazonProduct.title
     });
 
-    const amazonPrice = amazonProduct.price;
-    const flipkartPrice = flipkartProduct?.price ?? null;
-    const hasFlipkartPrice = typeof flipkartPrice === "number";
+    const cromaProduct = await scrapeCromaProduct(browser, amazonProduct.title);
+    logScraperDebug("compare", "Croma scrape result", cromaProduct || {
+      status: "no_confirmed_match",
+      amazonTitle: amazonProduct.title
+    });
 
-    let lowestPrice = amazonPrice;
-    let bestPrice = "Amazon";
-    let priceDifference = 0;
-
-    if (hasFlipkartPrice) {
-      priceDifference = Math.abs(amazonPrice - flipkartPrice);
-
-      if (flipkartPrice < amazonPrice) {
-        lowestPrice = flipkartPrice;
-        bestPrice = "Flipkart";
-      } else if (flipkartPrice === amazonPrice) {
-        bestPrice = "Same Price";
+    const sanitizedStores = sanitizeExtremeStoreOutliers([
+      {
+        label: "Amazon",
+        price: amazonProduct.price,
+        url: amazonProduct.url
+      },
+      {
+        label: "Flipkart",
+        price: flipkartProduct?.price ?? null,
+        url: flipkartProduct?.url || ""
+      },
+      {
+        label: "Croma",
+        price: cromaProduct?.price ?? null,
+        url: cromaProduct?.url || ""
       }
+    ]);
+
+    const amazonStore = sanitizedStores.find((store) => store.label === "Amazon");
+    const flipkartStore = sanitizedStores.find((store) => store.label === "Flipkart");
+    const cromaStore = sanitizedStores.find((store) => store.label === "Croma");
+
+    const amazonPrice = amazonStore?.price ?? null;
+    const flipkartPrice = flipkartStore?.price ?? null;
+    const cromaPrice = cromaStore?.price ?? null;
+    const hasFlipkartPrice = typeof flipkartPrice === "number";
+    const hasCromaPrice = typeof cromaPrice === "number";
+
+    const availablePrices = [
+      { label: "Amazon", price: amazonPrice },
+      { label: "Flipkart", price: flipkartPrice },
+      { label: "Croma", price: cromaPrice }
+    ].filter((entry) => typeof entry.price === "number");
+
+    if (!availablePrices.length) {
+      throw new Error("No confirmed store price could be validated.");
     }
+
+    const lowestPrice = Math.min(...availablePrices.map((entry) => entry.price));
+    const highestPrice = Math.max(...availablePrices.map((entry) => entry.price));
+    const lowestStores = availablePrices
+      .filter((entry) => entry.price === lowestPrice)
+      .map((entry) => entry.label);
+    const bestPrice = lowestStores.length === 1 ? lowestStores[0] : "Same Price";
+    const priceDifference = highestPrice - lowestPrice;
+    const matchedStoreCount = availablePrices.length;
 
     const comparison = {
       title: amazonProduct.title,
       image: amazonProduct.image,
       amazonPrice,
       flipkartPrice,
-      amazonUrl: amazonProduct.url,
-      flipkartUrl: flipkartProduct?.url || "",
+      cromaPrice,
+      amazonUrl: amazonStore?.url || "",
+      flipkartUrl: flipkartStore?.url || "",
+      cromaUrl: cromaStore?.url || "",
       bestPrice,
+      lowestStores,
       lowestPrice,
       priceDifference,
-      comparisonStatus: hasFlipkartPrice ? "complete" : "partial",
-      message: hasFlipkartPrice
-        ? "Price comparison completed successfully."
-        : "Amazon product found, but a Flipkart match could not be confirmed."
+      comparisonStatus:
+        hasFlipkartPrice && hasCromaPrice ? "complete" : matchedStoreCount > 1 ? "partial" : "amazon_only",
+      message:
+        hasFlipkartPrice && hasCromaPrice
+          ? "Price comparison completed successfully."
+          : matchedStoreCount > 1
+            ? "Price comparison completed with available store matches."
+            : "Amazon product found, but Flipkart and Croma matches could not be confirmed."
     };
 
     await SearchHistory.create({
@@ -98,8 +181,10 @@ export const comparePrices = async (req, res) => {
       productImage: comparison.image,
       amazonUrl: comparison.amazonUrl,
       flipkartUrl: comparison.flipkartUrl,
+      cromaUrl: comparison.cromaUrl,
       amazonPrice: comparison.amazonPrice,
       flipkartPrice: comparison.flipkartPrice,
+      cromaPrice: comparison.cromaPrice,
       bestPrice: comparison.bestPrice,
       priceDifference: comparison.priceDifference
     });
@@ -108,6 +193,7 @@ export const comparePrices = async (req, res) => {
       title: comparison.title,
       amazonPrice: comparison.amazonPrice,
       flipkartPrice: comparison.flipkartPrice,
+      cromaPrice: comparison.cromaPrice,
       bestPrice: comparison.bestPrice,
       comparisonStatus: comparison.comparisonStatus
     });

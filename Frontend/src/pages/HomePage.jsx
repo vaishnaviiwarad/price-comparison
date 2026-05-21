@@ -41,8 +41,10 @@ const HomePage = () => {
     productImage: comparison.image,
     amazonUrl: comparison.amazonUrl,
     flipkartUrl: comparison.flipkartUrl,
+    cromaUrl: comparison.cromaUrl,
     amazonPrice: comparison.amazonPrice,
     flipkartPrice: comparison.flipkartPrice,
+    cromaPrice: comparison.cromaPrice,
     bestPrice: comparison.bestPrice,
     priceDifference: comparison.priceDifference,
     searchedAt: new Date().toISOString()
@@ -100,11 +102,11 @@ const HomePage = () => {
             Welcome, {user?.name}
           </span>
           <h1 className="mt-6 max-w-2xl font-['Sora'] text-4xl font-semibold leading-tight text-ink-900">
-            Paste an Amazon URL and compare live prices with Flipkart.
+            Paste an Amazon URL and compare live prices with Flipkart and Croma.
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-ink-700">
             The system extracts the Amazon product title, image, and price, then
-            searches Flipkart for the closest matching listing.
+            searches Flipkart and Croma for the closest matching listings.
           </p>
 
           <form className="mt-8 space-y-5" onSubmit={handleCompare}>
@@ -146,7 +148,7 @@ const HomePage = () => {
             <div className="mt-5 space-y-3 text-sm text-white/90">
               <p>1. Login securely with JWT authentication.</p>
               <p>2. Paste an Amazon product URL.</p>
-              <p>3. Backend scrapes Amazon and searches Flipkart.</p>
+              <p>3. Backend scrapes Amazon and searches Flipkart plus Croma.</p>
               <p>4. Lowest price and difference are shown instantly.</p>
             </div>
           </article>
@@ -159,6 +161,7 @@ const HomePage = () => {
               <p>Product: iPhone 15 128GB</p>
               <p>Amazon Price: Rs. 74,999</p>
               <p>Flipkart Price: Rs. 73,499</p>
+              <p>Croma Price: Rs. 74,499</p>
               <p>Lowest Price: Flipkart</p>
             </div>
           </article>

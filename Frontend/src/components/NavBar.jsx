@@ -21,7 +21,7 @@ const NavBar = () => {
             <p className="font-['Sora'] text-lg font-semibold text-ink-900">
               Price Comparison
             </p>
-            <p className="text-sm text-ink-700">Amazon vs Flipkart in one place</p>
+            <p className="text-sm text-ink-700">Amazon, Flipkart, and Croma in one place</p>
           </div>
         </Link>
 

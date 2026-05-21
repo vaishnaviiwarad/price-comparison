@@ -137,7 +137,8 @@ const LAPTOP_HINT_TOKENS = new Set([
   "ssd",
   "windows"
 ]);
-const LAPTOP_PROCESSOR_CONTEXT = /\b(?:intel|amd|core|ryzen|celeron|pentium|athlon|ultra|snapdragon|processor)\b/i;
+const LAPTOP_PROCESSOR_CONTEXT =
+  /\b(?:intel|amd|core\s+(?:i[3579]|ultra)|ryzen|celeron|pentium|athlon|snapdragon\s+x)\b/i;
 const NON_SKU_TOKENS = new Set([
   "anti",
   "basic",
@@ -227,7 +228,7 @@ const PRODUCT_PAGE_PRICE_SELECTORS = [
   ".Nx9bqj"
 ];
 
-const normalizeWhitespace = (value = "") => value.replace(/\s+/g, " ").trim();
+export const normalizeWhitespace = (value = "") => value.replace(/\s+/g, " ").trim();
 
 const normalizeCompactText = (value = "") => normalizeWhitespace(value).toLowerCase().replace(/\s+/g, "");
 
@@ -324,6 +325,20 @@ const buildCompactTokens = (tokens) => tokens.filter((token) => !QUERY_STOPWORDS
 
 const findCategoryToken = (tokens) => tokens.find((token) => QUERY_CATEGORY_WORDS.has(token)) || "";
 
+const hasConflictingCategoryToken = (sourceCategoryToken, candidateTokens) => {
+  if (!sourceCategoryToken) {
+    return false;
+  }
+
+  const candidateCategoryTokens = [...candidateTokens].filter((token) => QUERY_CATEGORY_WORDS.has(token));
+
+  if (!candidateCategoryTokens.length || candidateCategoryTokens.includes(sourceCategoryToken)) {
+    return false;
+  }
+
+  return true;
+};
+
 const isModelNumberToken = (token) => /^(?:[a-z]*\d+[a-z]*|\d+[a-z]+)$/i.test(token);
 
 const isLikelySkuCode = (token) => {
@@ -341,7 +356,7 @@ const isLikelySkuCode = (token) => {
     return false;
   }
 
-  if (/^(?:\d+gb|\d+tb|\d+hz|\d+mp|\d+cm|\d+yr)$/i.test(compactToken)) {
+  if (/^(?:\d+gb|\d+tb|\d+hz|\d+mp|\d+cm|\d+yr|\d+mah|\d+w|\d+nm|\d+inch)$/i.test(compactToken)) {
     return false;
   }
 
@@ -386,7 +401,24 @@ const extractProcessorTokens = (value) => {
 };
 
 const isOfferPriceContext = (context = "") =>
-  /exchange|bank\s*offer|protect\s*promise|buy\s*at|apply\s*offers?/i.test(context);
+  /exchange|bank\s*offer|protect\s*promise|buy\s*at|apply\s*offers?|cashback|coupon|emi|no\s*cost|\/month|per\s*month|starting\s*(?:at|from)|off\s*on\s*exchange|off\s*on\s*emi/i.test(
+    context
+  );
+
+const isSecondaryPriceContext = (context = "") =>
+  /mrp|list\s*price|you\s*save|regular\s*price|strikethrough/i.test(context);
+
+const extractColorTokens = (value = "") => normalizeTitle(value).filter((token) => COLOR_TOKENS.has(token));
+
+const looksLikeColorPhrase = (value = "") => {
+  const normalizedValue = normalizeWhitespace(value);
+
+  if (!normalizedValue || /\b(?:previously|brand|choice|edition|women|men|unisex)\b/i.test(normalizedValue)) {
+    return false;
+  }
+
+  return extractColorTokens(normalizedValue).length > 0;
+};
 
 const extractColor = (value) => {
   const normalizedValue = normalizeWhitespace(value);
@@ -394,7 +426,7 @@ const extractColor = (value) => {
 
   if (semicolonParts.length > 1) {
     const trailingSegment = semicolonParts.at(-1);
-    if (/^[A-Za-z ]{3,30}$/.test(trailingSegment)) {
+    if (/^[A-Za-z ]{3,30}$/.test(trailingSegment) && looksLikeColorPhrase(trailingSegment)) {
       return trailingSegment;
     }
   }
@@ -413,14 +445,15 @@ const extractColor = (value) => {
   const descriptivePart = bracketParts.find(
     (part) =>
       /^[A-Za-z ]{3,40}$/.test(part) &&
-      !/\b(?:ram|storage|rom|ssd|hdd|memory|gb|tb)\b/i.test(part)
+      !/\b(?:ram|storage|rom|ssd|hdd|memory|gb|tb)\b/i.test(part) &&
+      looksLikeColorPhrase(part)
   );
 
   if (descriptivePart) {
     return descriptivePart;
   }
 
-  if (/^[A-Za-z ]{3,30}$/.test(bracketText)) {
+  if (/^[A-Za-z ]{3,30}$/.test(bracketText) && looksLikeColorPhrase(bracketText)) {
     return bracketText;
   }
 
@@ -488,8 +521,6 @@ const hasMultipackWords = (value) => /\b(set of|combo|pack of|set)\b/i.test(valu
 
 const hasMiniWord = (value) => /\bmini\b/i.test(value);
 
-const extractColorTokens = (value = "") => normalizeTitle(value).filter((token) => COLOR_TOKENS.has(token));
-
 const isColorMatch = (sourceColor, candidateText) => {
   if (!sourceColor || !candidateText) {
     return false;
@@ -538,11 +569,21 @@ const isPhoneLikeTitle = (normalizedTitle, tokens) =>
   (/\b(?:smartphone|phone|mobile|5g)\b/i.test(normalizedTitle) ||
     tokens.some((token) => PHONE_VARIANT_TOKENS.has(token) || isModelNumberToken(token)));
 
-const isLaptopLikeTitle = (normalizedTitle, tokens) =>
-  tokens.some((token) => COMPUTER_BRANDS.has(token)) &&
-  (/\b(?:laptop|notebook|macbook|chromebook)\b/i.test(normalizedTitle) ||
-    tokens.some((token) => LAPTOP_HINT_TOKENS.has(token)) ||
-    LAPTOP_PROCESSOR_CONTEXT.test(normalizedTitle));
+const isLaptopLikeTitle = (normalizedTitle, tokens) => {
+  const hasLaptopWords =
+    /\b(?:laptop|notebook|macbook|chromebook)\b/i.test(normalizedTitle) ||
+    tokens.some((token) => LAPTOP_HINT_TOKENS.has(token));
+  const phoneLike = isPhoneLikeTitle(normalizedTitle, tokens);
+
+  if (phoneLike && !hasLaptopWords) {
+    return false;
+  }
+
+  return (
+    tokens.some((token) => COMPUTER_BRANDS.has(token)) &&
+    (hasLaptopWords || LAPTOP_PROCESSOR_CONTEXT.test(normalizedTitle))
+  );
+};
 
 const buildStrictTokens = (tokens, categoryToken, { isPhoneLike = false } = {}) => {
   if (isPhoneLike) {
@@ -584,6 +625,59 @@ const buildStrictTokens = (tokens, categoryToken, { isPhoneLike = false } = {}) 
   return strictTokens;
 };
 
+const buildGenericRequiredTokens = ({
+  strictTokens,
+  brand,
+  familyToken,
+  categoryToken,
+  primaryNumericToken,
+  variantCodes
+}) => {
+  const requiredTokens = [];
+
+  if (
+    familyToken &&
+    familyToken.length >= 3 &&
+    familyToken !== brand &&
+    !QUERY_CATEGORY_WORDS.has(familyToken) &&
+    !COLOR_TOKENS.has(familyToken)
+  ) {
+    requiredTokens.push(familyToken);
+  }
+
+  if (primaryNumericToken && primaryNumericToken.length >= 2 && !/^\d$/.test(primaryNumericToken)) {
+    requiredTokens.push(primaryNumericToken);
+  }
+
+  if (categoryToken && !["phone", "mobile", "smartphone", "laptop"].includes(categoryToken)) {
+    requiredTokens.push(categoryToken);
+  }
+
+  if (variantCodes?.[0]) {
+    requiredTokens.push(variantCodes[0]);
+  }
+
+  for (const token of strictTokens) {
+    if (
+      requiredTokens.length >= 3 ||
+      token === brand ||
+      token === familyToken ||
+      token === categoryToken ||
+      token.length < 3 ||
+      COLOR_TOKENS.has(token) ||
+      QUERY_CATEGORY_WORDS.has(token)
+    ) {
+      continue;
+    }
+
+    if (!requiredTokens.includes(token)) {
+      requiredTokens.push(token);
+    }
+  }
+
+  return [...new Set(requiredTokens.filter(Boolean))].slice(0, 3);
+};
+
 const extractTitleFromText = (value) => {
   const normalizedValue = sanitizeProductTitle(value)
     .replace(/\b(Currently unavailable|Out of stock|Add to Compare|Bestseller|Trending)\b/gi, " ")
@@ -606,17 +700,28 @@ const extractTitleFromText = (value) => {
 
 const pickFirstPriceFromText = (value) => {
   const prices = getPriceEntriesFromText(value);
-  const nonOfferPrices = prices.filter(
-    (entry) => !isOfferPriceContext(entry.context)
-  );
-  const candidatePrices = nonOfferPrices.length ? nonOfferPrices : prices;
-  const reasonablePrices = candidatePrices.filter((entry) => entry.numeric >= 50);
-  const rankedPrices = (reasonablePrices.length ? reasonablePrices : candidatePrices).sort((first, second) => {
-    if (first.numeric !== second.numeric) {
-      return first.numeric - second.numeric;
+  const reasonablePrices = prices.filter((entry) => entry.numeric >= 50);
+  const candidatePrices = reasonablePrices.length ? reasonablePrices : prices;
+  const rankedPrices = [...candidatePrices].sort((first, second) => {
+    const firstOffer = isOfferPriceContext(first.context);
+    const secondOffer = isOfferPriceContext(second.context);
+
+    if (firstOffer !== secondOffer) {
+      return Number(firstOffer) - Number(secondOffer);
     }
 
-    return first.index - second.index;
+    const firstSecondary = isSecondaryPriceContext(first.context);
+    const secondSecondary = isSecondaryPriceContext(second.context);
+
+    if (firstSecondary !== secondSecondary) {
+      return Number(firstSecondary) - Number(secondSecondary);
+    }
+
+    if (first.index !== second.index) {
+      return first.index - second.index;
+    }
+
+    return second.numeric - first.numeric;
   });
 
   return rankedPrices[0]?.text || "";
@@ -627,7 +732,8 @@ const buildGenericDetails = (normalizedTitle, color, storage, variantCode) => {
     normalizedTitle.replace(/\([^)]*\)/g, " ").replace(/;.*$/g, " ")
   );
   const fullTokens = buildCompactTokens(normalizeTitle(removeMarketingPhrases(withoutVariant)));
-  const laptopLike = isLaptopLikeTitle(normalizedTitle, fullTokens);
+  const phoneLike = isPhoneLikeTitle(normalizedTitle, fullTokens);
+  const laptopLike = !phoneLike && isLaptopLikeTitle(normalizedTitle, fullTokens);
   const variantCodes = extractVariantCodes(normalizedTitle);
   const processorTokens = laptopLike ? extractProcessorTokens(normalizedTitle) : [];
   const mainClauseSource = laptopLike
@@ -638,7 +744,6 @@ const buildGenericDetails = (normalizedTitle, color, storage, variantCode) => {
   );
   const mainTokens = buildCompactTokens(normalizeTitle(mainClause));
   const categoryToken = findCategoryToken(mainTokens);
-  const phoneLike = isPhoneLikeTitle(normalizedTitle, mainTokens);
 
   if (laptopLike) {
     const brand = fullTokens.find((token) => COMPUTER_BRANDS.has(token)) || fullTokens[0] || "";
@@ -669,12 +774,13 @@ const buildGenericDetails = (normalizedTitle, color, storage, variantCode) => {
       brand,
       familyToken,
       model: "",
+      categoryToken: "laptop",
       color,
       storage,
       variantCode: variantCode || variantCodes[0] || "",
       variantCodes,
       processorTokens,
-      requiredTokens,
+      requiredTokens: [...processorTokens].filter(Boolean),
       isPhoneLike: false,
       isLaptopLike: true,
       isMultipack: hasMultipackWords(normalizedTitle),
@@ -705,21 +811,31 @@ const buildGenericDetails = (normalizedTitle, color, storage, variantCode) => {
         !PHONE_VARIANT_TOKENS.has(token)
     ) || "";
   const primaryNumericToken = strictTokens.find((token) => isModelNumberToken(token)) || "";
-  const requiredTokens = strictTokens.filter(
-    (token) =>
-      PHONE_VARIANT_TOKENS.has(token) ||
-      (phoneLike &&
-        token !== brand &&
-        token !== familyToken &&
-        token !== primaryNumericToken &&
-        !PHONE_NOISE_TOKENS.has(token))
-  );
+  const requiredTokens = phoneLike
+    ? strictTokens.filter(
+        (token) =>
+          PHONE_VARIANT_TOKENS.has(token) ||
+          (phoneLike &&
+            token !== brand &&
+            token !== familyToken &&
+            token !== primaryNumericToken &&
+            !PHONE_NOISE_TOKENS.has(token))
+      )
+    : buildGenericRequiredTokens({
+        strictTokens,
+        brand,
+        familyToken,
+        categoryToken,
+        primaryNumericToken,
+        variantCodes
+      });
   const model = phoneLike ? primaryQuery : "";
 
   return {
     brand,
     familyToken,
     model,
+    categoryToken,
     color,
     storage,
     variantCode,
@@ -756,6 +872,7 @@ const extractSourceDetails = (productTitle) => {
       familyToken:
         primaryTokens.find((token, index) => index > 0 && !/\d/.test(token) && token !== "apple") || "",
       model,
+      categoryToken: "phone",
       color,
       storage,
       variantCode,
@@ -778,7 +895,7 @@ const extractSourceDetails = (productTitle) => {
   return buildGenericDetails(normalizedTitle, color, storage, variantCode);
 };
 
-const buildSearchQueries = (productTitle) => {
+export const buildSearchQueries = (productTitle) => {
   const sourceDetails = extractSourceDetails(productTitle);
   const conciseTokens = sourceDetails.strictTokens.slice(0, 3).join(" ");
   const queries = [
@@ -811,7 +928,7 @@ const isAccessoryCandidate = (candidate) => {
   return ACCESSORY_KEYWORDS.some((keyword) => haystack.includes(keyword));
 };
 
-const scoreMatch = (sourceTitle, candidateTitle, sourceDetails) => {
+export const scoreMatch = (sourceTitle, candidateTitle, sourceDetails) => {
   const sourceTokens = new Set(normalizeTitle(sourceTitle));
   const candidateTokens = new Set(normalizeTitle(candidateTitle));
 
@@ -848,9 +965,29 @@ const scoreMatch = (sourceTitle, candidateTitle, sourceDetails) => {
     score -= 0.35;
   }
 
+  if (sourceDetails.categoryToken) {
+    if (candidateTokens.has(sourceDetails.categoryToken)) {
+      score += 0.12;
+    } else if (hasConflictingCategoryToken(sourceDetails.categoryToken, candidateTokens)) {
+      score -= 0.35;
+    }
+  }
+
   if (sourceDetails.variantCode) {
     const candidateHaystack = `${candidateTitle} `.toLowerCase();
-    if (candidateHaystack.includes(sourceDetails.variantCode) || candidateHaystack.includes(sourceDetails.variantCode.replace("-", " "))) {
+    const matchingVariantCodes =
+      sourceDetails.variantCodes?.filter(
+        (code) => candidateHaystack.includes(code) || candidateHaystack.includes(code.replace("-", " "))
+      ) || [];
+
+    if (matchingVariantCodes.length) {
+      score += 0.35 + Math.min(0.2, (matchingVariantCodes.length - 1) * 0.1);
+    } else if (sourceDetails.isLaptopLike) {
+      score -= 0.55;
+    } else if (
+      candidateHaystack.includes(sourceDetails.variantCode) ||
+      candidateHaystack.includes(sourceDetails.variantCode.replace("-", " "))
+    ) {
       score += 0.45;
     }
   }
@@ -899,16 +1036,18 @@ const scoreMatch = (sourceTitle, candidateTitle, sourceDetails) => {
   score += requiredTokenMatches * 0.25;
   score -= missingRequiredTokens * 0.45;
 
-  if (sourceDetails.isPhoneLike && sourceDetails.requiredTokens?.length) {
-    const sourceVariantTokens = sourceDetails.requiredTokens.filter((token) =>
+  if (sourceDetails.isPhoneLike) {
+    const sourceVariantTokens = sourceDetails.strictTokens.filter((token) =>
       PHONE_VARIANT_TOKENS.has(token)
+    );
+    const conflictingVariantTokens = [...PHONE_VARIANT_TOKENS].filter(
+      (token) => candidateTokens.has(token) && !sourceVariantTokens.includes(token)
     );
 
     if (sourceVariantTokens.length) {
-      const conflictingVariantTokens = [...PHONE_VARIANT_TOKENS].filter(
-        (token) => candidateTokens.has(token) && !sourceVariantTokens.includes(token)
-      );
       score -= conflictingVariantTokens.length * 0.4;
+    } else {
+      score -= conflictingVariantTokens.length * 0.35;
     }
   }
 
@@ -945,6 +1084,63 @@ const getCanonicalFlipkartKey = (url) => {
 };
 
 const isUsefulPrice = (price) => typeof price === "number" && price >= 10;
+
+const isSearchFallbackSafe = (candidate, sourceDetails) => {
+  if (!candidate?.price) {
+    return false;
+  }
+
+  if ((candidate.score || 0) < 0.85) {
+    return false;
+  }
+
+  const candidateText = `${candidate.title || ""} ${candidate.rawText || ""}`.trim();
+  const candidateTokens = new Set(normalizeTitle(candidateText));
+  const combinedScore = scoreMatch(sourceDetails.matchTitle, candidateText, sourceDetails);
+
+  if (combinedScore < 0.85) {
+    return false;
+  }
+
+  const missingRequiredTokens =
+    sourceDetails.requiredTokens?.filter((token) => !candidateTokens.has(token)).length || 0;
+
+  if (missingRequiredTokens > 0) {
+    return false;
+  }
+
+  if (
+    sourceDetails.categoryToken &&
+    hasConflictingCategoryToken(sourceDetails.categoryToken, candidateTokens) &&
+    !candidateTokens.has(sourceDetails.categoryToken)
+  ) {
+    return false;
+  }
+
+  if (sourceDetails.isLaptopLike && sourceDetails.variantCodes?.length) {
+    const hasAnyVariantCode = sourceDetails.variantCodes.some((code) => candidateTokens.has(code));
+
+    if (!hasAnyVariantCode) {
+      return false;
+    }
+  }
+
+  if (
+    sourceDetails.primaryNumericToken &&
+    !candidateTokens.has(sourceDetails.primaryNumericToken.toLowerCase())
+  ) {
+    return false;
+  }
+
+  if (
+    sourceDetails.color &&
+    !isColorMatch(sourceDetails.color, candidateText)
+  ) {
+    return false;
+  }
+
+  return true;
+};
 
 const isBetterCandidateVersion = (nextCandidate, previousCandidate) => {
   if (!previousCandidate) {
@@ -1099,17 +1295,34 @@ const extractCandidatesFromPage = async (page) =>
           })
           .filter((entry) => entry.numeric);
 
-        const nonOfferPrices = prices.filter(
-          (entry) => !/exchange|bank\s*offer|protect\s*promise|buy\s*at|apply\s*offers?/i.test(entry.context)
-        );
-        const candidatePrices = nonOfferPrices.length ? nonOfferPrices : prices;
-        const reasonablePrices = candidatePrices.filter((entry) => entry.numeric >= 50);
-        const rankedPrices = (reasonablePrices.length ? reasonablePrices : candidatePrices).sort((first, second) => {
-          if (first.numeric !== second.numeric) {
-            return first.numeric - second.numeric;
+        const isOfferPriceContextInPage = (context = "") =>
+          /exchange|bank\s*offer|protect\s*promise|buy\s*at|apply\s*offers?|cashback|coupon|emi|no\s*cost|\/month|per\s*month|starting\s*(?:at|from)|off\s*on\s*exchange|off\s*on\s*emi/i.test(
+            context
+          );
+        const isSecondaryPriceContextInPage = (context = "") =>
+          /mrp|list\s*price|you\s*save|regular\s*price|strikethrough/i.test(context);
+        const reasonablePrices = prices.filter((entry) => entry.numeric >= 50);
+        const candidatePrices = reasonablePrices.length ? reasonablePrices : prices;
+        const rankedPrices = [...candidatePrices].sort((first, second) => {
+          const firstOffer = isOfferPriceContextInPage(first.context);
+          const secondOffer = isOfferPriceContextInPage(second.context);
+
+          if (firstOffer !== secondOffer) {
+            return Number(firstOffer) - Number(secondOffer);
           }
 
-          return first.index - second.index;
+          const firstSecondary = isSecondaryPriceContextInPage(first.context);
+          const secondSecondary = isSecondaryPriceContextInPage(second.context);
+
+          if (firstSecondary !== secondSecondary) {
+            return Number(firstSecondary) - Number(secondSecondary);
+          }
+
+          if (first.index !== second.index) {
+            return first.index - second.index;
+          }
+
+          return second.numeric - first.numeric;
         });
 
         return rankedPrices[0]?.text || "";
@@ -1258,6 +1471,56 @@ const scrapeFlipkartProductPage = async (browser, productUrl, expectedTitle, sou
       ({ titleSelectors, priceSelectors, expectedTitleValue }) => {
         const normalizeWhitespaceInPage = (value = "") => value.replace(/\s+/g, " ").trim();
         const bodyText = normalizeWhitespaceInPage(document.body.innerText || "");
+        const isOfferPriceContextInPage = (context = "") =>
+          /exchange|bank\s*offer|protect\s*promise|buy\s*at|apply\s*offers?|cashback|coupon|emi|no\s*cost|\/month|per\s*month|starting\s*(?:at|from)|off\s*on\s*exchange|off\s*on\s*emi/i.test(
+            context
+          );
+        const isSecondaryPriceContextInPage = (context = "") =>
+          /mrp|list\s*price|you\s*save|regular\s*price|strikethrough/i.test(context);
+        const pickBestStandalonePriceText = () => {
+          const exactPriceNodes = Array.from(document.querySelectorAll("body *"))
+            .map((node, nodeIndex) => ({
+              text: normalizeWhitespaceInPage(node.textContent || ""),
+              context: normalizeWhitespaceInPage(
+                node.parentElement?.textContent || node.closest("div")?.textContent || node.textContent || ""
+              ),
+              nodeIndex
+            }))
+            .filter(
+              (entry) =>
+                /^\u20B9\s?\d{1,3}(?:,\d{2,3})+(?!\d)$|^\u20B9\s?\d+(?:\.\d+)?$/.test(entry.text)
+            )
+            .map((entry) => ({
+              ...entry,
+              numeric: Number.parseFloat(entry.text.replace(/[^0-9.,]/g, "").replace(/,/g, ""))
+            }))
+            .filter((entry) => Number.isFinite(entry.numeric));
+
+          const reasonableEntries = exactPriceNodes.filter((entry) => entry.numeric >= 50);
+          const candidateEntries = reasonableEntries.length ? reasonableEntries : exactPriceNodes;
+
+          return [...candidateEntries].sort((first, second) => {
+            const firstOffer = isOfferPriceContextInPage(first.context);
+            const secondOffer = isOfferPriceContextInPage(second.context);
+
+            if (firstOffer !== secondOffer) {
+              return Number(firstOffer) - Number(secondOffer);
+            }
+
+            const firstSecondary = isSecondaryPriceContextInPage(first.context);
+            const secondSecondary = isSecondaryPriceContextInPage(second.context);
+
+            if (firstSecondary !== secondSecondary) {
+              return Number(firstSecondary) - Number(secondSecondary);
+            }
+
+            if (first.nodeIndex !== second.nodeIndex) {
+              return first.nodeIndex - second.nodeIndex;
+            }
+
+            return second.numeric - first.numeric;
+          })[0]?.text || "";
+        };
 
         const title =
           titleSelectors
@@ -1270,11 +1533,7 @@ const scrapeFlipkartProductPage = async (browser, productUrl, expectedTitle, sou
             .find(Boolean) || "";
 
         if (!priceText) {
-          priceText =
-            Array.from(document.querySelectorAll("body *"))
-              .map((node) => normalizeWhitespaceInPage(node.textContent || ""))
-              .filter((text) => /^\u20B9\s?\d{1,3}(?:,\d{2,3})+(?!\d)$|^\u20B9\s?\d+(?:\.\d+)?$/.test(text))
-              .sort((first, second) => first.length - second.length)[0] || "";
+          priceText = pickBestStandalonePriceText();
         }
 
         const image =
@@ -1322,7 +1581,7 @@ const scrapeFlipkartProductPage = async (browser, productUrl, expectedTitle, sou
     const currentColorText = [data.title, data.selectedColor].filter(Boolean).join(" ");
     const colorMismatch = Boolean(sourceDetails?.color) && !isColorMatch(sourceDetails.color, currentColorText);
 
-    if (sourceDetails?.color && (colorMismatch || !price) && depth < 2) {
+    if (sourceDetails?.color && colorMismatch && depth < 2) {
       const html = await page.content();
       const $ = cheerio.load(html);
       const relatedCandidates = extractCandidatesFromCheerio($);
@@ -1517,10 +1776,21 @@ export const scrapeFlipkartProduct = async (browser, productTitle) => {
       if (
         bestCandidate.price &&
         (!sourceDetails.color ||
-          isColorMatch(sourceDetails.color, `${bestCandidate.title} ${bestCandidate.rawText || ""}`))
+          isColorMatch(sourceDetails.color, `${bestCandidate.title} ${bestCandidate.rawText || ""}`)) &&
+        isSearchFallbackSafe(bestCandidate, sourceDetails)
       ) {
         logScraperDebug("flipkart", "Using search-result price as fallback", bestCandidate);
         return bestCandidate;
+      }
+
+      if (bestCandidate?.price) {
+        logScraperDebug("flipkart", "Rejected unsafe search-result fallback", {
+          query,
+          title: bestCandidate.title,
+          price: bestCandidate.price,
+          score: Number(bestCandidate.score.toFixed(3)),
+          url: bestCandidate.url
+        });
       }
     } catch (error) {
       logScraperError("flipkart", "Flipkart search query failed", error, { query });

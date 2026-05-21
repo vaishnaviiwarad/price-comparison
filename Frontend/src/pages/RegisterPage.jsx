@@ -135,7 +135,7 @@ const RegisterPage = () => {
           </h2>
           <p className="mt-5 max-w-xl text-lg text-ink-700">
             After login, paste a real Amazon product URL and compare it against
-            Flipkart pricing from the same dashboard.
+            Flipkart and Croma pricing from the same dashboard.
           </p>
         </section>
       </div>

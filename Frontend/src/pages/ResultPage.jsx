@@ -87,6 +87,7 @@ const ResultPage = () => {
             <div className="mt-5 space-y-2 text-base text-ink-800">
               <p>Amazon Price: {formatPrice(comparison.amazonPrice)}</p>
               <p>Flipkart Price: {formatPrice(comparison.flipkartPrice)}</p>
+              <p>Croma Price: {formatPrice(comparison.cromaPrice)}</p>
               <p>Lowest Price: {comparison.bestPrice}</p>
             </div>
           </article>

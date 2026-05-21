@@ -17,16 +17,21 @@ const cards = [
     key: "flipkart",
     label: "Flipkart",
     accent: "from-sky-100 to-cyan-50"
+  },
+  {
+    key: "croma",
+    label: "Croma",
+    accent: "from-rose-100 to-orange-50"
   }
 ];
 
 const PriceSummary = ({ comparison }) => (
-  <div className="grid gap-5 lg:grid-cols-2">
+  <div className="grid gap-5 xl:grid-cols-3">
     {cards.map((card) => {
-      const price =
-        card.key === "amazon" ? comparison.amazonPrice : comparison.flipkartPrice;
-      const url = card.key === "amazon" ? comparison.amazonUrl : comparison.flipkartUrl;
-      const isWinner = comparison.bestPrice === card.label;
+      const price = comparison[`${card.key}Price`];
+      const url = comparison[`${card.key}Url`];
+      const isWinner =
+        typeof price === "number" && typeof comparison.lowestPrice === "number" && price === comparison.lowestPrice;
 
       return (
         <article
