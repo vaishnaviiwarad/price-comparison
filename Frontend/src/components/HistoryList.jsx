@@ -7,60 +7,67 @@ const formatPrice = (price) =>
       }).format(price)
     : "Not found";
 
-const formatDateTime = (value) => {
-  const parsedDate = new Date(value);
+const stores = [
+  { key: "amazon", label: "Amazon" },
+  { key: "flipkart", label: "Flipkart" },
+  { key: "croma", label: "Croma" }
+];
 
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(parsedDate);
-};
-
-const HistoryList = ({ history, onSelect, loading = false }) => {
+const HistoryList = ({ history }) => {
   if (!history.length) {
     return (
-      <div className="rounded-3xl border border-dashed border-slate-300 bg-white/60 p-6 text-sm text-ink-700">
+      <div className="rounded-[28px] border border-dashed border-white/15 bg-white/5 p-6 text-sm text-ink-600">
         Your recent comparisons will appear here after the first search.
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-2">
       {history.map((item) => (
-        <button
-          type="button"
+        <article
           key={item._id}
-          onClick={() => onSelect(item)}
-          disabled={loading}
-          className="flex w-full flex-col gap-4 rounded-3xl border border-white/80 bg-white p-5 text-left transition hover:-translate-y-0.5 hover:shadow-glow sm:flex-row sm:items-center"
+          className="panel animate-reveal p-5 transition duration-300 hover:-translate-y-1 hover:border-brand-500/20"
         >
-          <img
-            src={item.productImage || "https://placehold.co/96x96?text=Product"}
-            alt={item.productTitle}
-            className="h-24 w-24 rounded-2xl object-cover"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold text-ink-900">{item.productTitle}</p>
-            <p className="mt-2 text-sm text-ink-700">
-              Amazon: {formatPrice(item.amazonPrice)} | Flipkart:{" "}
-              {formatPrice(item.flipkartPrice)}
-            </p>
-            <p className="mt-1 text-sm text-brand-600">
-              Best price: {item.bestPrice} | Difference: {formatPrice(item.priceDifference)}
-            </p>
-            <p className="mt-1 text-xs text-ink-500">
-              Last checked: {formatDateTime(item.searchedAt)}
-            </p>
-            <p className="mt-2 text-sm font-semibold text-brand-700">
-              {loading ? "Refreshing live prices..." : "Click to recheck live prices"}
-            </p>
+          <div className="flex gap-4">
+            <img
+              src={item.productImage || "https://placehold.co/96x96?text=Product"}
+              alt={item.productTitle}
+              className="h-24 w-24 rounded-2xl border border-white/10 bg-royal-950/80 object-cover"
+            />
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="line-clamp-2 text-base font-semibold text-ink-900">
+                  {item.productTitle}
+                </p>
+                <span className="rounded-full border border-brand-500/25 bg-brand-500/12 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-brand-200">
+                  {item.bestPrice}
+                </span>
+              </div>
+
+              <p className="mt-2 text-sm font-medium text-ink-600">
+                Difference: {formatPrice(item.priceDifference)}
+              </p>
+            </div>
           </div>
-        </button>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {stores.map((store) => (
+              <div
+                key={store.key}
+                className="rounded-2xl border border-white/10 bg-royal-950/55 px-4 py-3"
+              >
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-ink-500">
+                  {store.label}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-ink-900">
+                  {formatPrice(item[`${store.key}Price`])}
+                </p>
+              </div>
+            ))}
+          </div>
+        </article>
       ))}
     </div>
   );

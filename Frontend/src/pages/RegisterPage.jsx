@@ -44,15 +44,16 @@ const RegisterPage = () => {
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl items-center px-6 py-12">
       <div className="grid w-full gap-10 lg:grid-cols-[1fr_1fr]">
-        <section className="panel p-8 sm:p-10">
+        <section className="panel animate-reveal relative overflow-hidden p-8 sm:p-10">
+          <div className="absolute left-[-3rem] top-10 h-32 w-32 rounded-full bg-royal-500/18 blur-3xl" />
           <h1 className="font-['Sora'] text-3xl font-semibold text-ink-900">Register</h1>
-          <p className="mt-2 text-sm text-ink-700">
+          <p className="mt-2 text-sm text-ink-600">
             Create your account to save comparisons and search history.
           </p>
 
           <form className="mt-8 space-y-5" onSubmit={handleRegister}>
             <div>
-              <label className="mb-2 block text-sm font-semibold text-ink-800" htmlFor="name">
+              <label className="mb-2 block text-sm font-semibold text-ink-700" htmlFor="name">
                 Name
               </label>
               <input
@@ -68,7 +69,7 @@ const RegisterPage = () => {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-ink-800" htmlFor="email">
+              <label className="mb-2 block text-sm font-semibold text-ink-700" htmlFor="email">
                 Email
               </label>
               <input
@@ -85,7 +86,7 @@ const RegisterPage = () => {
 
             <div>
               <label
-                className="mb-2 block text-sm font-semibold text-ink-800"
+                className="mb-2 block text-sm font-semibold text-ink-700"
                 htmlFor="password"
               >
                 Password
@@ -103,12 +104,12 @@ const RegisterPage = () => {
             </div>
 
             {error ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                 {error}
               </div>
             ) : null}
             {success ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <div className="rounded-2xl border border-brand-500/25 bg-brand-500/10 px-4 py-3 text-sm text-brand-100">
                 {success}
               </div>
             ) : null}
@@ -118,25 +119,40 @@ const RegisterPage = () => {
             </button>
           </form>
 
-          <p className="mt-6 text-sm text-ink-700">
+          <p className="mt-6 text-sm text-ink-600">
             Already have an account?{" "}
-            <Link to="/login" className="font-semibold text-brand-600">
+            <Link to="/login" className="font-semibold text-brand-200">
               Login
             </Link>
           </p>
         </section>
 
-        <section className="flex flex-col justify-center">
-          <span className="w-fit rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-700">
+        <section className="flex animate-reveal flex-col justify-center">
+          <span className="w-fit rounded-full border border-brand-500/30 bg-brand-500/12 px-4 py-2 text-sm font-bold text-brand-200">
             Real-time product search
           </span>
           <h2 className="mt-6 max-w-xl font-['Sora'] text-4xl font-semibold leading-tight text-ink-900 sm:text-5xl">
             Track the best deal with one Amazon link.
           </h2>
-          <p className="mt-5 max-w-xl text-lg text-ink-700">
+          <p className="mt-5 max-w-xl text-lg leading-8 text-ink-600">
             After login, paste a real Amazon product URL and compare it against
-            Flipkart pricing from the same dashboard.
+            Flipkart and Croma pricing from the same dashboard.
           </p>
+          <div className="mt-8 grid max-w-xl gap-3">
+            {[
+              "Premium dark interface with subtle movement across sections.",
+              "Saved comparisons stay visible in one calm, uncluttered workspace."
+            ].map((point, index) => (
+              <div
+                key={point}
+                className={`rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm leading-6 text-ink-700 ${
+                  index === 0 ? "animate-drift" : "animate-float-slow"
+                }`}
+              >
+                {point}
+              </div>
+            ))}
+          </div>
         </section>
       </div>
     </main>

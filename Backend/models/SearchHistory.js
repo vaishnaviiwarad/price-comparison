@@ -23,11 +23,19 @@ const searchHistorySchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    cromaUrl: {
+      type: String,
+      default: ""
+    },
     amazonPrice: {
       type: Number,
-      required: true
+      default: null
     },
     flipkartPrice: {
+      type: Number,
+      default: null
+    },
+    cromaPrice: {
       type: Number,
       default: null
     },
