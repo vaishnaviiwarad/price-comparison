@@ -1,6 +1,6 @@
-import puppeteer from "puppeteer";
 import SearchHistory from "../models/SearchHistory.js";
 import { scrapeAmazonProduct } from "../scraper/amazonScraper.js";
+import { getSharedBrowser } from "../scraper/browserManager.js";
 import { scrapeCromaProduct } from "../scraper/cromaScraper.js";
 import { logScraperDebug, logScraperError } from "../scraper/debug.js";
 import { scrapeFlipkartProduct } from "../scraper/flipkartScraper.js";
@@ -13,16 +13,6 @@ const isAmazonUrl = (value) => {
     return false;
   }
 };
-
-const launchBrowser = async () =>
-  puppeteer.launch({
-    headless: process.env.HEADLESS !== "false",
-    defaultViewport: {
-      width: 1366,
-      height: 900
-    },
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-  });
 
 const EXTREME_LOW_RATIO = 0.35;
 const EXTREME_HIGH_RATIO = 3.5;
@@ -76,15 +66,13 @@ export const comparePrices = async (req, res) => {
     return res.status(400).json({ message: "Please provide a valid Amazon product URL." });
   }
 
-  let browser;
-
   try {
     logScraperDebug("compare", "Starting price comparison", {
       userId: req.user?.id,
       amazonUrl: url
     });
 
-    browser = await launchBrowser();
+    const browser = await getSharedBrowser();
 
     const amazonProduct = await scrapeAmazonProduct(browser, url);
     logScraperDebug("compare", "Amazon scrape complete", {
@@ -93,13 +81,16 @@ export const comparePrices = async (req, res) => {
       url: amazonProduct.url
     });
 
-    const flipkartProduct = await scrapeFlipkartProduct(browser, amazonProduct.title);
+    const [flipkartProduct, cromaProduct] = await Promise.all([
+      scrapeFlipkartProduct(browser, amazonProduct.title),
+      scrapeCromaProduct(browser, amazonProduct.title)
+    ]);
+
     logScraperDebug("compare", "Flipkart scrape result", flipkartProduct || {
       status: "no_confirmed_match",
       amazonTitle: amazonProduct.title
     });
 
-    const cromaProduct = await scrapeCromaProduct(browser, amazonProduct.title);
     logScraperDebug("compare", "Croma scrape result", cromaProduct || {
       status: "no_confirmed_match",
       amazonTitle: amazonProduct.title
@@ -209,10 +200,6 @@ export const comparePrices = async (req, res) => {
       message: "Unable to compare prices at the moment.",
       error: error.message
     });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 };
 
